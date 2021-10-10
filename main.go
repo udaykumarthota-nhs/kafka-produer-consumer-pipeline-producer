@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/Kamva/octopus"
+	"github.com/Kamva/octopus/base"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/segmentio/kafka-go"
@@ -18,9 +20,9 @@ import (
 )
 
 const (
-	topicGC = "telemetrycheckGC311"
+	topicGC = "telemetrycheckGC315"
 	// topicCPU      = "telemetrycheckCPU1"
-	brokerAddress = "localhost:9092"
+	brokerAddress = "103.249.77.21:9092"
 )
 
 func main() {
@@ -32,7 +34,7 @@ func main() {
 	if e != nil {
 		fmt.Println("error:", e)
 	}
-	// go consumeCPUProcessData(client, ctx)
+	go consumeCPUProcessData(client, ctx)
 	go consumeGenericCountersData(client, ctx)
 	HandleRouter()
 
@@ -92,6 +94,11 @@ type OutputData struct {
 }
 
 func getAllGCInfo(rw http.ResponseWriter, r *http.Request) {
+
+	model := &GcModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	model.Initiate(&GenericCountersTelemetryData{}, config)
+
 	vars := mux.Vars(r)
 	ipaddress := vars["ipaddress"]
 	portAddress := vars["portaddress"]
@@ -141,10 +148,15 @@ func getData(client *mongo.Client, ipaddress string, port string) (cpuData []CPU
 	collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
+	model := &GcModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	model.Initiate(&GenericCountersTelemetryData{}, config)
+
 	if ipaddress != "" {
 		// cursor, err := collectionGC.Find(ctx, bson.M{"source": ipaddress + ":" + port})
 		// err = cursor.All(context.Background(), &gcData)
 		cursor, err := collectionCPU.Find(ctx, bson.M{"source": ipaddress + ":" + port})
+
 		err = cursor.All(context.Background(), &cpuData)
 		if err != nil {
 			fmt.Println(err)
@@ -201,22 +213,29 @@ func consumeGenericCountersData(client *mongo.Client, ctx context.Context) {
 		Logger:  l,
 	})
 
-	collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
-	collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
+	// collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
+	// collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
+
+	model := &GcModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	model.Initiate(&GenericCountersTelemetryData{}, config)
 
 	for {
 		msg, err := r.ReadMessage(ctx)
 		if err != nil {
 			fmt.Println("could not read message " + err.Error())
+		} else {
+			fmt.Println(msg)
 		}
-
 		var u DType
 		err = json.Unmarshal(msg.Value, &u)
 		if err != nil {
 			log.Print(err)
 		}
+		fmt.Println(u)
 
 		if u.Telemetry.EncodingPath == "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters" {
+
 			var x GenericCountersTelemetryData
 			fmt.Println("Consuming data in GC")
 			err = json.Unmarshal(msg.Value, &x)
@@ -224,63 +243,93 @@ func consumeGenericCountersData(client *mongo.Client, ctx context.Context) {
 				log.Print(err)
 			}
 			fmt.Println(x)
-			_, e := collectionGC.InsertOne(ctx, x)
+
+			// gcModel := NewGCTelemetryData()
+			e := model.Create(&x)
+			// gcModel.CloseClient()
+
+			// _, e := collectionGC.InsertOne(ctx, x)
 			if e != nil {
 				fmt.Println("error:", e)
+			} else {
+				fmt.Println("Successfully Inserted")
 			}
+		}
+		// else {
+		// 	var x CPUTelemetryData
+		// 	err = json.Unmarshal(msg.Value, &x)
+		// 	fmt.Println("Consuming data in CPU")
+		// 	fmt.Println(x)
+
+		// 	if err != nil {
+		// 		log.Print(err)
+		// 	}
+		// 	cpuModel := NewGCTelemetryData()
+		// 	e := cpuModel.Create(&x)
+		// 	// _, e := collectionCPU.InsertOne(ctx, x)
+		// 	if e != nil {
+		// 		fmt.Println("error:", e)
+		// 	} else {
+		// 		fmt.Println("Successfully Inserted")
+		// 	}
+		// }
+	}
+}
+
+func consumeCPUProcessData(client *mongo.Client, ctx context.Context) {
+
+	l := log.New(os.Stdout, "kafka reader: ", 0)
+
+	r := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{brokerAddress},
+		Topic:   topicGC,
+		Logger:  l,
+	})
+
+	model := &CpuModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	model.Initiate(&CPUTelemetryData{}, config)
+
+	// collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
+	// collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
+
+	for {
+		msg, err := r.ReadMessage(ctx)
+		if err != nil {
+			fmt.Println("could not read message " + err.Error())
 		} else {
+			fmt.Println(msg)
+		}
+		var u DType
+		err = json.Unmarshal(msg.Value, &u)
+		if err != nil {
+			log.Print(err)
+		}
+		fmt.Println(u)
+
+		if u.Telemetry.EncodingPath != "Cisco-IOS-XR-infra-statsd-oper:infra-statistics/interfaces/interface/latest/generic-counters" {
+
 			var x CPUTelemetryData
 			err = json.Unmarshal(msg.Value, &x)
 			fmt.Println("Consuming data in CPU")
+			fmt.Println(x)
 
 			if err != nil {
 				log.Print(err)
 			}
-
-			_, e := collectionCPU.InsertOne(ctx, x)
+			// cpuModel := NewGCTelemetryData()
+			e := model.Create(&x)
+			// cpuModel.CloseClient()
+			// _, e := collectionCPU.InsertOne(ctx, x)
 			if e != nil {
 				fmt.Println("error:", e)
+			} else {
+				fmt.Println("Successfully Inserted")
 			}
 		}
 	}
+
 }
-
-// func consumeCPUProcessData(client *mongo.Client, ctx context.Context) {
-// 	l := log.New(os.Stdout, "kafka reader: ", 0)
-
-// 	r := kafka.NewReader(kafka.ReaderConfig{
-// 		Brokers: []string{brokerAddress},
-// 		Topic:   topicCPU,
-// 		Logger:  l,
-// 	})
-// 	type Message struct {
-// 		Key   string
-// 		Value string
-// 	}
-
-// 	collection := client.Database("ConsumedDataDB1").Collection("CPU")
-
-// 	for {
-// 		msg, err := r.ReadMessage(ctx)
-// 		if err != nil {
-// 			fmt.Println("could not read message " + err.Error())
-// 		}
-// 		fmt.Println("Consuming data in CPU Process")
-// 		fmt.Println("received: ", string(msg.Value))
-// 		// l := TelemetryData{msg.Value}
-// 		var u CPUTelemetryData
-// 		err = json.Unmarshal(msg.Value, &u)
-// 		if err != nil {
-// 			log.Print(err)
-// 		}
-// 		fmt.Printf("u: %+v\n", u)
-
-// 		_, e := collection.InsertOne(ctx, u)
-// 		if e != nil {
-// 			fmt.Println("error:", e)
-// 		}
-// 	}
-// }
 
 type Telemetry struct {
 	NodeIDStr           string `json:"node_id_str"`
@@ -326,12 +375,6 @@ type CPURow struct {
 	TimeStamp int64      `json:"TimeStamp"`
 	Keys      CPUKey     `json:"Keys"`
 	Content   CPUContent `json:"Content"`
-}
-
-type CPUTelemetryData struct {
-	Source    string    `json:"Source"`
-	Telemetry Telemetry `json:"Telemetry"`
-	Rows      []CPURow  `json:"Rows"`
 }
 
 type GenericCountersKey struct {
@@ -382,14 +425,61 @@ type GenericCountersRow struct {
 	Keys      GenericCountersKey     `json:"Keys"`
 	Content   GenericCountersContent `json:"Content"`
 }
+type DType struct {
+	Source    string    `json:"Source"`
+	Telemetry Telemetry `json:"Telemetry"`
+}
 
 type GenericCountersTelemetryData struct {
+	octopus.MongoScheme
+	Id        string               `json:"_id"`
 	Source    string               `json:"Source"`
 	Telemetry Telemetry            `json:"Telemetry"`
 	Rows      []GenericCountersRow `json:"Rows"`
 }
 
-type DType struct {
+type CPUTelemetryData struct {
+	octopus.MongoScheme
+	Id        string    `json:"_id"`
 	Source    string    `json:"Source"`
 	Telemetry Telemetry `json:"Telemetry"`
+	Rows      []CPURow  `json:"Rows"`
+}
+
+type CPUTelemetryDataModel struct {
+	octopus.Model
+}
+
+func NewCPUTelemetryData() *CPUTelemetryDataModel {
+	model := &CPUTelemetryDataModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "CPUTeleData"}
+	model.Initiate(&CPUTelemetryData{}, config)
+
+	return model
+}
+
+func NewGCTelemetryData() *GCTelemetryDataModel {
+	model1 := &GCTelemetryDataModel{}
+	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "GCTeleData"}
+	model1.Initiate(&GenericCountersTelemetryData{}, config)
+
+	return model1
+}
+
+type GCTelemetryDataModel struct {
+	octopus.Model
+}
+
+func (u GenericCountersTelemetryData) GetID() interface{} {
+	return u.Id
+}
+func (u CPUTelemetryData) GetID() interface{} {
+	return u.Id
+}
+
+type GcModel struct {
+	octopus.Model
+}
+type CpuModel struct {
+	octopus.Model
 }

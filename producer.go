@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	topicGC = "telemetrycheckGC311"
+	topicGC = "telemetrycheckGC315"
 	// topicCPU      = "telemetrycheckCPU1"
-	brokerAddress = "localhost:9092"
+	brokerAddress = "103.249.77.21:9092"
 )
 
 func main() {
