@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -28,14 +29,14 @@ const (
 func main() {
 
 	fmt.Println("Hello World")
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-	ctx := context.Background()
-	client, e := mongo.Connect(ctx, clientOptions)
-	if e != nil {
-		fmt.Println("error:", e)
-	}
-	go consumeCPUProcessData(client, ctx)
-	go consumeGenericCountersData(client, ctx)
+	// clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	// ctx := context.Background()
+	// client, e := mongo.Connect(ctx, clientOptions)
+	// if e != nil {
+	// 	fmt.Println("error:", e)
+	// }
+	// go consumeCPUProcessData(client, ctx)
+	// go consumeGenericCountersData(client, ctx)
 	HandleRouter()
 
 }
@@ -57,7 +58,101 @@ func HandleRouter() {
 	r.HandleFunc("/fetch/gc/all/{ipaddress}/{portaddress}", getAllGCInfo)
 	r.HandleFunc("/fetch/cpu/all/{ipaddress}/{portaddress}", getAllCPUInfo)
 	r.HandleFunc("/fetch/ip/{ipaddress}/{portaddress}", filterByIPAddress)
+	r.HandleFunc("/devices/add", addDevice).Methods("POST")
+	r.HandleFunc("/fetch/devices/all", getAllDevices).Methods("GET")
+
+	r.HandleFunc("/macdetails/add", addMacDetail).Methods("POST")
+	r.HandleFunc("/fetch/macdetails/all", getAllMacDetails).Methods("GET")
 	http.ListenAndServe(":8088", handler)
+}
+
+func getAllDevices(rw http.ResponseWriter, r *http.Request) {
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	collectionDevices := client.Database("ConsumedDataDB1").Collection("devices")
+	result, e := collectionDevices.Find(ctx, bson.M{})
+	var devices []Device
+	if e != nil {
+		json.NewEncoder(rw).Encode(e)
+	} else {
+		err = result.All(context.Background(), &devices)
+
+		fmt.Print(devices)
+		json.NewEncoder(rw).Encode(devices)
+	}
+	client.Disconnect(ctx)
+}
+
+func addDevice(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	body, err := ioutil.ReadAll(r.Body)
+	var device Device
+	err = json.Unmarshal(body, &device)
+	if err != nil {
+		fmt.Print(err)
+	}
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	collectionDevices := client.Database("ConsumedDataDB1").Collection("devices")
+	result, e := collectionDevices.InsertOne(ctx, device)
+	if e != nil {
+		json.NewEncoder(rw).Encode(e)
+	} else {
+		json.NewEncoder(rw).Encode(result)
+	}
+	client.Disconnect(ctx)
+}
+
+func getAllMacDetails(rw http.ResponseWriter, r *http.Request) {
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	collectionDevices := client.Database("ConsumedDataDB1").Collection("macdetails")
+	result, e := collectionDevices.Find(ctx, bson.M{})
+	var macDetails []MacDetails
+	if e != nil {
+		json.NewEncoder(rw).Encode(e)
+	} else {
+		err = result.All(context.Background(), &macDetails)
+		fmt.Print(macDetails)
+		json.NewEncoder(rw).Encode(macDetails)
+	}
+	client.Disconnect(ctx)
+}
+
+func addMacDetail(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	body, err := ioutil.ReadAll(r.Body)
+	var macDetail MacDetails
+	err = json.Unmarshal(body, &macDetail)
+	if err != nil {
+		fmt.Print(err)
+	}
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	collectionDevices := client.Database("ConsumedDataDB1").Collection("macdetails")
+	result, e := collectionDevices.InsertOne(ctx, macDetail)
+	if e != nil {
+		json.NewEncoder(rw).Encode(e)
+	} else {
+		json.NewEncoder(rw).Encode(result)
+	}
+	client.Disconnect(ctx)
 }
 
 func filterByIPAddress(rw http.ResponseWriter, r *http.Request) {
@@ -95,9 +190,9 @@ type OutputData struct {
 
 func getAllGCInfo(rw http.ResponseWriter, r *http.Request) {
 
-	model := &GcModel{}
-	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
-	model.Initiate(&GenericCountersTelemetryData{}, config)
+	// model := &GcModel{}
+	// config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	// model.Initiate(&GenericCountersTelemetryData{}, config)
 
 	vars := mux.Vars(r)
 	ipaddress := vars["ipaddress"]
@@ -213,12 +308,12 @@ func consumeGenericCountersData(client *mongo.Client, ctx context.Context) {
 		Logger:  l,
 	})
 
-	// collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
+	collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
 	// collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
 
-	model := &GcModel{}
-	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
-	model.Initiate(&GenericCountersTelemetryData{}, config)
+	// model := &GcModel{}
+	// config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	// model.Initiate(&GenericCountersTelemetryData{}, config)
 
 	for {
 		msg, err := r.ReadMessage(ctx)
@@ -245,10 +340,10 @@ func consumeGenericCountersData(client *mongo.Client, ctx context.Context) {
 			fmt.Println(x)
 
 			// gcModel := NewGCTelemetryData()
-			e := model.Create(&x)
+			// e := model.Create(&x)
 			// gcModel.CloseClient()
 
-			// _, e := collectionGC.InsertOne(ctx, x)
+			_, e := collectionGC.InsertOne(ctx, x)
 			if e != nil {
 				fmt.Println("error:", e)
 			} else {
@@ -286,12 +381,12 @@ func consumeCPUProcessData(client *mongo.Client, ctx context.Context) {
 		Logger:  l,
 	})
 
-	model := &CpuModel{}
-	config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
-	model.Initiate(&CPUTelemetryData{}, config)
+	// model := &CpuModel{}
+	// config := base.DBConfig{Driver: base.Mongo, Host: "localhost", Port: "27017", Database: "NHSDB"}
+	// model.Initiate(&CPUTelemetryData{}, config)
 
 	// collectionGC := client.Database("ConsumedDataDB1").Collection("GC")
-	// collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
+	collectionCPU := client.Database("ConsumedDataDB1").Collection("CPU")
 
 	for {
 		msg, err := r.ReadMessage(ctx)
@@ -318,9 +413,9 @@ func consumeCPUProcessData(client *mongo.Client, ctx context.Context) {
 				log.Print(err)
 			}
 			// cpuModel := NewGCTelemetryData()
-			e := model.Create(&x)
+			// e := model.Create(&x)
 			// cpuModel.CloseClient()
-			// _, e := collectionCPU.InsertOne(ctx, x)
+			_, e := collectionCPU.InsertOne(ctx, x)
 			if e != nil {
 				fmt.Println("error:", e)
 			} else {
@@ -482,4 +577,21 @@ type GcModel struct {
 }
 type CpuModel struct {
 	octopus.Model
+}
+
+type Device struct {
+	Name      string `json:"Name"`
+	Ip        string `json:"Ip"`
+	Port      string `json:"Port"`
+	Username  string `json:"Username"`
+	Password  string `json:"Password"`
+	IsEnabled bool   `json:"IsEnabled"`
+	UseNSO    bool   `json:"UseNSO"`
+}
+
+type MacDetails struct {
+	Macaddress string `json:"Macaddress"`
+	Area       string `json:"Area"`
+	City       string `json:"City"`
+	Country    string `json:"Country"`
 }
