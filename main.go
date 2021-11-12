@@ -16,14 +16,16 @@ import (
 	"github.com/rs/cors"
 	"github.com/segmentio/kafka-go"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
-	topicGC = "telemetrycheckGC315"
+	topicGC = "telemetry"
 	// topicCPU      = "telemetrycheckCPU1"
-	brokerAddress = "103.249.77.21:9092"
+	brokerAddress     = "103.249.77.26:9092"
+	mapBoxAccessToken = "pk.eyJ1IjoidWRheWt1bWFyLTgzMjkiLCJhIjoiY2t2bWN0NDZmM29xMjMxcGdmcDh1bGQyMSJ9.WVNK0XbI0qTmNKzN8ALP_A"
 )
 
 func main() {
@@ -38,6 +40,7 @@ func main() {
 	// go consumeCPUProcessData(client, ctx)
 	// go consumeGenericCountersData(client, ctx)
 	HandleRouter()
+	// getCoordinates("vinukonda", "vinukonda", "andhra pradesh", "india")
 
 }
 
@@ -45,7 +48,7 @@ func HandleRouter() {
 	r := mux.NewRouter()
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:4200"},
+		AllowedOrigins:   []string{"*"},
 		AllowCredentials: true,
 	})
 	handler := c.Handler(r)
@@ -63,6 +66,7 @@ func HandleRouter() {
 
 	r.HandleFunc("/macdetails/add", addMacDetail).Methods("POST")
 	r.HandleFunc("/fetch/macdetails/all", getAllMacDetails).Methods("GET")
+	r.HandleFunc("/fetch/devices/{_id}", getDeviceDetailsById).Methods("GET")
 	http.ListenAndServe(":8088", handler)
 }
 
@@ -75,16 +79,44 @@ func getAllDevices(rw http.ResponseWriter, r *http.Request) {
 	}
 	collectionDevices := client.Database("ConsumedDataDB1").Collection("devices")
 	result, e := collectionDevices.Find(ctx, bson.M{})
-	var devices []Device
+	var devices []bson.M
 	if e != nil {
 		json.NewEncoder(rw).Encode(e)
 	} else {
-		err = result.All(context.Background(), &devices)
 
+		err = result.All(context.Background(), &devices)
+		// err = result.All(context.Background(), )
 		fmt.Print(devices)
 		json.NewEncoder(rw).Encode(devices)
 	}
-	client.Disconnect(ctx)
+	defer client.Disconnect(ctx)
+}
+
+func getDeviceDetailsById(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["_id"]
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	fmt.Print(id)
+	collectionDevices := client.Database("ConsumedDataDB1").Collection("devices")
+	objId, e := primitive.ObjectIDFromHex(id)
+	if e != nil {
+		json.NewEncoder(rw).Encode(e)
+	}
+	result := collectionDevices.FindOne(ctx, bson.M{"_id": objId})
+	var device bson.M
+	//  else {
+
+	err = result.Decode(&device)
+	// err = result.All(context.Background(), )
+	fmt.Print(device)
+	json.NewEncoder(rw).Encode(device)
+	// }
+	defer client.Disconnect(ctx)
 }
 
 func addDevice(rw http.ResponseWriter, r *http.Request) {
@@ -101,6 +133,8 @@ func addDevice(rw http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println("error:", err)
 	}
+	fmt.Print(device)
+
 	collectionDevices := client.Database("ConsumedDataDB1").Collection("devices")
 	result, e := collectionDevices.InsertOne(ctx, device)
 	if e != nil {
@@ -109,6 +143,15 @@ func addDevice(rw http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(rw).Encode(result)
 	}
 	client.Disconnect(ctx)
+}
+
+func getCoordinates(area, city, state, country string) {
+	resp, err := http.Get("https://api.mapbox.com/geocoding/v5/mapbox.places/" + area + "," + city + "," + state + "," + country + ".json?limit=1&access_token=pk.eyJ1IjoidWRheWt1bWFyLTgzMjkiLCJhIjoiY2t2bWN0NDZmM29xMjMxcGdmcDh1bGQyMSJ9.WVNK0XbI0qTmNKzN8ALP_A")
+	if err != nil {
+		log.Fatal("ooopsss an error occurred, please try again")
+	}
+	defer resp.Body.Close()
+	fmt.Print(resp)
 }
 
 func getAllMacDetails(rw http.ResponseWriter, r *http.Request) {
@@ -580,18 +623,28 @@ type CpuModel struct {
 }
 
 type Device struct {
-	Name      string `json:"Name"`
-	Ip        string `json:"Ip"`
-	Port      string `json:"Port"`
-	Username  string `json:"Username"`
-	Password  string `json:"Password"`
-	IsEnabled bool   `json:"IsEnabled"`
-	UseNSO    bool   `json:"UseNSO"`
+	Id          primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Name        string             `json:"Name"`
+	Ip          string             `json:"Ip"`
+	Port        string             `json:"Port"`
+	Username    string             `json:"Username"`
+	Password    string             `json:"Password"`
+	IsEnabled   bool               `json:"IsEnabled"`
+	UseNSO      bool               `json:"UseNSO"`
+	MacDetail   MacDetails         `json:"MacDetails"`
+	Coordinates Coordinates        `json:"Coordinates"`
 }
 
 type MacDetails struct {
+	// Id         primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
 	Macaddress string `json:"Macaddress"`
 	Area       string `json:"Area"`
 	City       string `json:"City"`
+	State      string `json:"State"`
 	Country    string `json:"Country"`
+}
+
+type Coordinates struct {
+	Latitude  json.Number `json:"Latitude"`
+	Longitude json.Number `json:"Longitude"`
 }
