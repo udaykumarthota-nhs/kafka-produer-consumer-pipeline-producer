@@ -1,0 +1,67 @@
+{
+    "Source": "156.20.13.50:32876",
+    "Telemetry": {
+        "node_id_str": "uut",
+        "subscription_id_str": "test",
+        "encoding_path": "Cisco-IOS-XR-wdsysmon-fd-oper:system-monitoring/",
+        "collection_id": 111808,
+        "collection_start_time": 7987987908,
+        "msg_timestamp": 342342342,
+        "collection_end_time": 342342342
+    },
+    "Pools": [
+        {
+            "pool_no": "1",
+            "pool_id": "P001",
+            "available": [
+                "ipaddress1","ipaddress2","ipaddress3",".........."
+            ],
+            "used": ["ipaddress1","ipaddress2","ipaddress3",".........."] ,
+            "range_start": "10.10.0.1",
+            "range_end": "10.10.0.50"
+        },
+        {
+            "pool_no": "2",
+            "pool_id": "P002",
+            "available": [
+                "ipaddress1","ipaddress2","ipaddress3",".........."
+            ],
+            "used": ["ipaddress1","ipaddress2","ipaddress3",".........."] ,
+            "range_start": "10.10.0.51",
+            "range_end": "10.10.0.100"
+        }
+        ]
+}
+
+
+type IPPOOL struct{
+    Source string `json:"source"`
+    Telemetry Telemetry `json:"telemetry"`
+    Pools POOLS `json:"pools"`
+}
+
+type Telemetry struct {
+	NodeIDStr           string `json:"node_id_str"`
+	SubscriptionIDStr   string `json:"subscription_id_str"`
+	EncodingPath        string `json:"encoding_path"`
+	CollectionID        int    `json:"collection_id"`
+	CollectionStartTime int64  `json:"collection_start_time"`
+	MsgTimestamp        int64  `json:"msg_timestamp"`
+	CollectionEndTime   int64  `json:"collection_end_time"`
+}
+
+type POOLS struct{
+    Pools []POOL `json:"pool"`
+}
+
+type POOL struct{
+    PoolNo string `json:"pool_no"`
+    PoolId string `json:"pool_id"`
+    Available []string `json:"available"`
+    Used []string `json:"used"`
+    RangeStart string `json:"range_start"`
+    RangeEnd string `json:"range_end"`
+}
+
+
+
